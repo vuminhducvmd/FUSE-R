@@ -208,7 +208,7 @@ FUSE <- nn_module(
           p2_all <- torch_empty(0, dtype = torch_long(), device = device)
         } else {
           p1_all <- S1$repeat_interleave(S2$numel())
-          p2_all <- S2$repeat(S1$numel())
+          p2_all <- S2$`repeat`(S1$numel())
           mask <- (p1_all != p2_all)
           p1_all <- p1_all[mask]
           p2_all <- p2_all[mask]
