@@ -373,7 +373,6 @@ FUSE <- nn_module(
       self$phi_min$copy_(torch_tensor(lo))
       self$phi_max$copy_(torch_tensor(hi))
     })
-
     history
   }
 )

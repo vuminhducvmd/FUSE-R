@@ -2,8 +2,12 @@ Package: FUSE
 Type: Package
 Title: Fused Unified Centrality Score Estimation
 Version: 0.1.0
-Author: Minh Duc Vu
-Maintainer: Minh Duc Vu 
+Authors@R: 
+    c(
+      person("Minh Duc", "Vu", email = "minhduc.vu@u.nus.edu", role = c("aut", "cre")),
+      person("Mingshuo", "Liu", email = "mshliu@ucdavis.edu", role = "aut"),
+      person("Doudou", "Zhou", email = "ddzhou@nus.edu.sg", role = "aut")
+    ) 
 Description: A lightweight implementation of the Fused Unified centrality Score Estimation (FUSE),
     combining global data centrality learning and local denoising score matching through a shared
     encoder with two scalar heads.
