@@ -1,0 +1,217 @@
+---
+title: "FUSE Example: Centrality Score Estimation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Introduction
+
+This vignette demonstrates the usage of the FUSE (Fused Unified centrality Score Estimation) package in R. FUSE combines global data centrality learning and local denoising score matching through a shared encoder with two scalar heads.
+
+## Installation
+
+First, install the required packages:
+
+```{r install, eval=FALSE}
+# Install torch and other dependencies
+install.packages(c("torch", "ggplot2", "umap", "MASS", "patchwork"))
+torch::install_torch()
+
+devtools::install_github("vuminhducvmd/FUSE-R")
+```
+
+Load the packages:
+
+```{r load}
+library(torch)
+library(FUSE)
+library(ggplot2)
+library(umap)
+library(MASS)
+library(patchwork)
+```
+
+## Data Generation
+
+Let's generate synthetic data from a mixture of normal distributions:
+
+```{r data_gen}
+# Function to generate mixture of normal data
+generate_mixture_normal_data <- function(n = 1000, d = 2, k = 3, test_size = 0.1, cov = NULL, random_state = 42) {
+  set.seed(random_state)
+  weights <- rep(1/k, k)  # Simple equal weights
+  means <- matrix(rnorm(k * d, 0, 5), k, d)
+
+  if (is.null(cov)) {
+    covs <- replicate(k, diag(d), simplify = FALSE)  # Identity covariance
+  } else if (is.list(cov)) {
+    covs <- cov
+  } else {
+    covs <- replicate(k, cov, simplify = FALSE)
+  }
+
+  labels <- sample(1:k, n, replace = TRUE, prob = weights)
+  data <- matrix(0, n, d)
+  for (comp in 1:k) {
+    idx <- which(labels == comp)
+    if (length(idx) > 0) {
+      data[idx, ] <- mvrnorm(length(idx), means[comp, ], covs[[comp]])
+    }
+  }
+
+  if (test_size == 0) {
+    return(list(data = data, labels = labels))
+  }
+
+  train_idx <- sample(1:n, round(n * (1 - test_size)))
+  test_idx <- setdiff(1:n, train_idx)
+
+  list(
+    train = data[train_idx, ],
+    test = data[test_idx, ],
+    y_train = labels[train_idx],
+    y_test = labels[test_idx]
+  )
+}
+
+# Generate training data
+set.seed(123)
+data <- generate_mixture_normal_data(n = 5000, d = 2, k = 4, random_state = 123, test_size = 0)
+trainset <- data$data
+y_train <- data$labels
+
+# Visualize the data
+df_data <- data.frame(x = trainset[, 1], y = trainset[, 2], label = as.factor(y_train))
+ggplot(df_data, aes(x = x, y = y, color = label)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Synthetic Mixture of Normal Data", x = "X1", y = "X2") +
+  theme_minimal()
+```
+
+## Model Training
+
+Set up the device and create the FUSE model:
+
+```{r model_setup}
+# Set device
+device <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
+cat("Using device:", device$type, "\n")
+
+# Convert data to torch tensors
+train_tensor <- torch_tensor(trainset, dtype = torch_float(), device = device)
+
+# Compute dissimilarity matrix (Euclidean distance)
+Dtrain <- torch_cdist(train_tensor, train_tensor, p = 2)
+
+# Create FUSE model
+model <- FUSE(input_dim = 2, hidden = c(32, 32), dropout = 0.0)
+model$to(device)
+```
+
+Train the model:
+
+```{r training}
+# Fit the model
+history <- model$fit(
+  X = train_tensor,
+  dissimilarity_matrix = Dtrain,
+  partitioned = TRUE,
+  allPairs = FALSE,
+  num_epochs = 20,
+  dsm_resampling = 8,
+  anchors_per_pair_global = 64,
+  lr = 1e-3,
+  device = device,
+  quiet = FALSE,
+  seed = 379
+)
+
+# Plot training history
+history_df <- do.call(rbind, lapply(1:length(history), function(i) {
+  data.frame(epoch = i, loss_global = history[[i]]$loss_global,
+             loss_gradl = history[[i]]$loss_gradl,
+             loss_total = history[[i]]$loss_total)
+}))
+
+ggplot(history_df, aes(x = epoch)) +
+  geom_line(aes(y = loss_global, color = "Global Loss")) +
+  geom_line(aes(y = loss_gradl, color = "Local Loss")) +
+  geom_line(aes(y = loss_total, color = "Total Loss")) +
+  labs(title = "Training History", x = "Epoch", y = "Loss") +
+  theme_minimal()
+```
+
+## Inference and Visualization
+
+Perform inference at different t values (interpolation between global and local centrality):
+
+```{r inference}
+# Inference at different t values
+t_values <- c(0.0, 0.25, 0.5, 0.75, 1.0)
+scores_list <- lapply(t_values, function(t) {
+  scores <- model$inference(train_tensor, t)
+  as.numeric(scores$cpu())
+})
+
+# Create data frame for plotting
+inference_df <- data.frame(
+  x = rep(trainset[, 1], length(t_values)),
+  y = rep(trainset[, 2], length(t_values)),
+  t = rep(t_values, each = nrow(trainset)),
+  score = unlist(scores_list)
+)
+
+ggplot(inference_df, aes(x = x, y = y, color = score)) +
+  geom_point(alpha = 0.6) +
+  facet_wrap(~ t, labeller = labeller(t = function(x) paste("t =", x))) +
+  scale_color_viridis_c() +
+  labs(title = "Centrality Scores at Different t Values",
+       x = "X1", y = "X2", color = "Score") +
+  theme_minimal()
+```
+
+## Contour Plots
+
+Create contour plots showing the homotopy centrality function:
+
+```{r contours, fig.width=12, fig.height=4}
+# Plot homotopy contours
+plots <- plot_homotopy_contours(model, trainset, t_values = t_values,
+                                title = "Homotopy Centrality Contours")
+
+if (is.list(plots)) {
+  combined_plot <- wrap_plots(plots) + plot_annotation(title = "Homotopy Centrality Contours - Mixture of Normal Distribution")
+  print(combined_plot)
+} else {
+  print(plots)
+}
+```
+
+## UMAP Visualization
+
+Visualize the centrality in UMAP space:
+
+```{r umap, fig.width=12, fig.height=8}
+# Plot UMAP
+umap_plots <- plot_homotopy_umap(model, trainset, y = y_train,
+                                 t_values = c(0.0, 0.33, 0.67, 1.0),
+                                 title = "UMAP — Labels + Homotopy Centrality per t")
+
+if (is.list(umap_plots)) {
+  combined_umap <- wrap_plots(umap_plots) + plot_annotation(title = "UMAP Visualization")
+  print(combined_umap)
+}
+```
+
+## Conclusion
+
+This example demonstrates how to use FUSE for centrality estimation on synthetic data. The model learns both global and local centrality measures and interpolates between them using the homotopy parameter t.
+
+- t = 0: Pure global centrality
+- t = 1: Pure local centrality
+- 0 < t < 1: Hybrid centrality
+
+The contour plots show how the centrality landscape changes with t, and the UMAP visualizations help understand the multi-scale nature of the learned centrality.

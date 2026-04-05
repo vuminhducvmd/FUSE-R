@@ -1,0 +1,33 @@
+# R package
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Compiled
+*.o
+*.so
+*.dll
+
+# Check
+*.Rout
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Build
+build/
+dist/
+*.tar.gz
+
+# Python (if any)
+__pycache__/
+*.pyc

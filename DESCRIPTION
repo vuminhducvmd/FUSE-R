@@ -1,0 +1,29 @@
+Package: FUSE
+Type: Package
+Title: Fused Unified Centrality Score Estimation
+Version: 0.1.0
+Author: Minh Duc Vu
+Maintainer: Minh Duc Vu 
+Description: A lightweight implementation of the Fused Unified centrality Score Estimation (FUSE),
+    combining global data centrality learning and local denoising score matching through a shared
+    encoder with two scalar heads.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.1
+Depends:
+    R (>= 4.0.0)
+Imports:
+    torch,
+    stats,
+    utils,
+    MASS
+Suggests:
+    testthat,
+    knitr,
+    rmarkdown,
+    ggplot2,
+    umap,
+    patchwork,
+    devtools
+VignetteBuilder: knitr
