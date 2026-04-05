@@ -209,7 +209,7 @@ FUSE <- nn_module(
         } else {
           p1_all <- S1$repeat_interleave(S2$numel())
           p2_all <- S2$repeat(S1$numel())
-          mask <- p1_all != p2_all
+          mask <- (p1_all != p2_all)
           p1_all <- p1_all[mask]
           p2_all <- p2_all[mask]
         }
@@ -245,8 +245,8 @@ FUSE <- nn_module(
         k0 <- S0$numel()
 
         if (use_matrix) {
-          D1_full <- dissimilarity_matrix[S0]$index_select(2, p1_idx)
-          D2_full <- dissimilarity_matrix[S0]$index_select(2, p2_idx)
+          D1_full <- torch_index_select(dissimilarity_matrix[S0], 2, p1_idx)
+          D2_full <- torch_index_select(dissimilarity_matrix[S0], 2, p2_idx)
         } else {
           A_mat <- X[S0]
           P1 <- X[p1_idx]
@@ -271,9 +271,9 @@ FUSE <- nn_module(
 
         if (A < D1_full$shape[1]) {
           scores <- torch_rand(c(k0, B), device = device)
-          anc_idx <- scores$topk(A, dim = 1, largest = TRUE, sorted = FALSE)$indices
-          D1 <- D1_full$gather(1, anc_idx)
-          D2 <- D2_full$gather(1, anc_idx)
+          anc_idx <- torch_topk(scores, A, dim = 1, largest = TRUE, sorted = FALSE)$indices
+          D1 <- torch_gather(D1_full, 1, anc_idx)
+          D2 <- torch_gather(D2_full, 1, anc_idx)
         } else {
           D1 <- D1_full
           D2 <- D2_full
